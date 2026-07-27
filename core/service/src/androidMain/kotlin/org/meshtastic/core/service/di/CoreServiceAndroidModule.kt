@@ -22,6 +22,7 @@ import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Module
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+import org.meshtastic.core.ble.CompanionAssociationRepository
 import org.meshtastic.core.common.database.DatabaseManager
 import org.meshtastic.core.repository.AdminController
 import org.meshtastic.core.repository.CommandSender
@@ -78,6 +79,7 @@ class CoreServiceAndroidModule {
         notificationManager: NotificationManager,
         messageProcessor: Lazy<MeshMessageProcessor>,
         radioConfigRepository: RadioConfigRepository,
+        companionAssociationRepository: CompanionAssociationRepository,
         @Named("ServiceScope") scope: CoroutineScope,
     ): RadioController = RadioControllerImpl(
         serviceRepository = serviceRepository,
@@ -96,6 +98,19 @@ class CoreServiceAndroidModule {
         messageProcessor = messageProcessor,
         radioConfigRepository = radioConfigRepository,
         scope = scope,
-        onDeviceAddressChanged = { MeshService.startService(context, ServiceStartTrigger.DeviceAddressChanged) },
+        onDeviceAddressChanged = {
+            // The address change may complete after the app has been backgrounded; a CDM association for the newly
+            // selected radio is the only exemption that can make that start legal, so look it up right here.
+            val selectedBleMac =
+                CompanionAssociationRepository.bleMacFromFullAddress(
+                    radioInterfaceService.currentDeviceAddressFlow.value,
+                )
+            MeshService.startService(
+                context,
+                ServiceStartTrigger.DeviceAddressChanged,
+                hasCompanionAssociation =
+                selectedBleMac?.let(companionAssociationRepository::hasAssociationFor) ?: false,
+            )
+        },
     )
 }
